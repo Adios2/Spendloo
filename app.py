@@ -1,7 +1,11 @@
-from flask import Flask, render_template
-from database.db import get_db, init_db, seed_db
+import sqlite3
+
+from flask import Flask, flash, redirect, render_template, request, url_for
+
+from database.db import create_user, get_db, init_db, seed_db
 
 app = Flask(__name__)
+app.secret_key = "dev-secret-change-me"
 
 with app.app_context():
     init_db()
@@ -17,9 +21,51 @@ def landing():
     return render_template("landing.html")
 
 
-@app.route("/register")
+@app.route("/register", methods=["GET", "POST"])
 def register():
-    return render_template("register.html")
+    if request.method == "GET":
+        return render_template("register.html", errors={}, form={})
+
+    name = (request.form.get("name") or "").strip()
+    email = (request.form.get("email") or "").strip().lower()
+    password = request.form.get("password") or ""
+    confirm = request.form.get("confirm_password") or ""
+
+    errors = {}
+    if not name:
+        errors["name"] = "Name is required."
+    elif len(name) > 100:
+        errors["name"] = "Name must be 100 characters or fewer."
+    if not email:
+        errors["email"] = "Email is required."
+    elif "@" not in email:
+        errors["email"] = "Enter a valid email address."
+    if not password:
+        errors["password"] = "Password is required."
+    elif len(password) < 8:
+        errors["password"] = "Password must be at least 8 characters."
+    if confirm != password:
+        errors["confirm_password"] = "Passwords do not match."
+
+    if errors:
+        return render_template(
+            "register.html",
+            errors=errors,
+            form={"name": name, "email": email},
+        )
+
+    try:
+        create_user(name, email, password)
+    except sqlite3.IntegrityError:
+        errors["email"] = "An account with this email already exists."
+        return render_template(
+            "register.html",
+            errors=errors,
+            form={"name": name, "email": email},
+        )
+
+    flash("Account created. Please sign in.", "success")
+    return redirect(url_for("login"))
 
 
 @app.route("/login")
