@@ -1,8 +1,9 @@
 import sqlite3
 
-from flask import Flask, flash, redirect, render_template, request, url_for
+from flask import Flask, flash, redirect, render_template, request, session, url_for
+from werkzeug.security import check_password_hash
 
-from database.db import create_user, get_db, init_db, seed_db
+from database.db import create_user, get_db, get_user_by_email, init_db, seed_db
 
 app = Flask(__name__)
 app.secret_key = "dev-secret-change-me"
@@ -23,6 +24,8 @@ def landing():
 
 @app.route("/register", methods=["GET", "POST"])
 def register():
+    if session.get("user_id"):
+        return redirect(url_for("landing"))
     if request.method == "GET":
         return render_template("register.html", errors={}, form={})
 
@@ -68,9 +71,32 @@ def register():
     return redirect(url_for("login"))
 
 
-@app.route("/login")
+@app.route("/login", methods=["GET", "POST"])
 def login():
-    return render_template("login.html")
+    if session.get("user_id"):
+        return redirect(url_for("landing"))
+    if request.method == "GET":
+        return render_template("login.html", errors={}, form={})
+
+    email = (request.form.get("email") or "").strip().lower()
+    password = request.form.get("password") or ""
+
+    errors = {}
+    if not email:
+        errors["email"] = "Invalid email or password."
+    if not password:
+        errors["password"] = "Invalid email or password."
+
+    if errors:
+        return render_template("login.html", errors=errors, form={"email": email})
+
+    user = get_user_by_email(email)
+    if user is None or not check_password_hash(user["password_hash"], password):
+        errors["form"] = "Invalid email or password."
+        return render_template("login.html", errors=errors, form={"email": email})
+
+    session["user_id"] = user["id"]
+    return redirect(url_for("landing"))
 
 
 # ------------------------------------------------------------------ #
@@ -89,7 +115,8 @@ def privacy():
 
 @app.route("/logout")
 def logout():
-    return "Logout — coming in Step 3"
+    session.clear()
+    return redirect(url_for("landing"))
 
 
 @app.route("/profile")
